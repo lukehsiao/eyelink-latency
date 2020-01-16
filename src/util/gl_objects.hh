@@ -157,6 +157,18 @@ public:
   unsigned int height() const { return height_; }
   const std::vector<uint8_t>& pixels() const { return pixels_; }
   uint8_t* mutable_pixels() { return pixels_.data(); }
+  uint8_t& at( const unsigned int x, const unsigned int y )
+  {
+    if ( x >= width_ ) {
+      throw std::out_of_range( "x >= width" );
+    }
+
+    if ( y >= height_ ) {
+      throw std::out_of_range( "y >= height" );
+    }
+
+    return pixels_.at( y * width_ + x );
+  }
 };
 
 /* Raster of 4:2:0 8-bit Y'CbCr samples
