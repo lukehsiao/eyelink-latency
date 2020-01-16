@@ -57,22 +57,21 @@ private:
 
   Program texture_shader_program_ = {};
 
-  Texture Y_, Cb_, Cr_;
-
   VertexArrayObject texture_shader_array_object_ = {};
   VertexBufferObject screen_corners_ = {};
   VertexBufferObject other_vertices_ = {};
 
 public:
-  VideoDisplay( const Raster420& raster, const bool fullscreen = false );
+  VideoDisplay( const unsigned int width, const unsigned int height, const bool fullscreen = false );
 
-  VideoDisplay( const VideoDisplay& other ) = delete;
-  VideoDisplay& operator=( const VideoDisplay& other ) = delete;
-
-  void draw( const Raster420& raster );
+  void draw( Texture420& image );
   void repaint();
   void resize( const unsigned int width, const unsigned int height );
 
   Window& window() { return current_context_window_.window_; }
   const Window& window() const { return current_context_window_.window_; }
+
+  /* forbid copying */
+  VideoDisplay( const VideoDisplay& other ) = delete;
+  VideoDisplay& operator=( const VideoDisplay& other ) = delete;
 };

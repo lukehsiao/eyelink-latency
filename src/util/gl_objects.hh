@@ -189,15 +189,23 @@ public:
 
   ~Texture() { glDeleteTextures( 1, &num_ ); }
 
-  void bind( const GLenum texture_unit );
-  void load( const Plane& raster );
-  void resize( const unsigned int width, const unsigned int height );
+  void bind( const GLenum texture_unit ) const;
+  void load( const Plane& raster, const GLenum texture_unit );
   unsigned int width() const { return width_; }
   unsigned int height() const { return height_; }
 
   /* disallow copy */
   Texture( const Texture& other ) = delete;
   Texture& operator=( const Texture& other ) = delete;
+};
+
+struct Texture420
+{
+  Texture Y, Cb, Cr;
+
+  explicit Texture420( const Raster420& sample );
+  void load( const Raster420& raster );
+  void bind() const;
 };
 
 void compile_shader( const GLuint num, const std::string& source );

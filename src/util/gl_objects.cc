@@ -117,35 +117,52 @@ void Window::Deleter::operator()( GLFWwindow* x ) const
   glfwDestroyWindow( x );
 }
 
-void Texture::bind( const GLenum texture_unit )
+void Texture::bind( const GLenum texture_unit ) const
 {
   glActiveTexture( texture_unit );
-  resize( width_, height_ );
-
+  glBindTexture( GL_TEXTURE_RECTANGLE, num_ );
   glTexParameteri( GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
   glTexParameteri( GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
   glTexParameteri( GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
   glTexParameteri( GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 }
 
-void Texture::resize( const unsigned int width, const unsigned int height )
-{
-  width_ = width;
-  height_ = height;
-  glBindTexture( GL_TEXTURE_RECTANGLE, num_ );
-  glTexImage2D( GL_TEXTURE_RECTANGLE, 0, GL_RGBA8, width_, height_, 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr );
-}
-
-void Texture::load( const Plane& plane )
+void Texture::load( const Plane& plane, const GLenum texture_unit )
 {
   if ( plane.width() != width() or plane.height() != height() ) {
     throw runtime_error( "plane's dimensions don't match texture's" );
   }
 
-  glBindTexture( GL_TEXTURE_RECTANGLE, num_ );
+  bind( texture_unit );
+
   glPixelStorei( GL_UNPACK_ROW_LENGTH, width_ );
+  glTexImage2D( GL_TEXTURE_RECTANGLE, 0, GL_RGBA8, width_, height_, 0, GL_BGRA, GL_UNSIGNED_BYTE, nullptr );
   glTexSubImage2D(
     GL_TEXTURE_RECTANGLE_ARB, 0, 0, 0, width_, height_, GL_LUMINANCE, GL_UNSIGNED_BYTE, &( plane.pixels().at( 0 ) ) );
+}
+
+Texture420::Texture420( const Raster420& sample )
+  : Y( sample.Y.width(), sample.Y.height() )
+  , Cb( sample.Cb.width(), sample.Cb.height() )
+  , Cr( sample.Cr.width(), sample.Cr.height() )
+{
+  bind();
+
+  load( sample );
+}
+
+void Texture420::load( const Raster420& raster )
+{
+  Y.load( raster.Y, GL_TEXTURE0 );
+  Cb.load( raster.Cb, GL_TEXTURE1 );
+  Cr.load( raster.Cr, GL_TEXTURE2 );
+}
+
+void Texture420::bind() const
+{
+  Y.bind( GL_TEXTURE0 );
+  Cb.bind( GL_TEXTURE1 );
+  Cr.bind( GL_TEXTURE2 );
 }
 
 void compile_shader( const GLuint num, const string& source )

@@ -98,13 +98,10 @@ VideoDisplay::CurrentContextWindow::CurrentContextWindow( const unsigned int wid
   window_.make_context_current();
 }
 
-VideoDisplay::VideoDisplay( const Raster420& raster, const bool fullscreen )
-  : width_( raster.Y.width() )
-  , height_( raster.Y.height() )
+VideoDisplay::VideoDisplay( const unsigned int width, const unsigned int height, const bool fullscreen )
+  : width_( width )
+  , height_( height )
   , current_context_window_( width_, height_, "OpenGL Example", fullscreen )
-  , Y_( raster.Y.width(), raster.Y.height() )
-  , Cb_( raster.Cb.width(), raster.Cb.height() )
-  , Cr_( raster.Cr.width(), raster.Cr.height() )
 {
   texture_shader_program_.attach( scale_from_pixel_coordinates_ );
   texture_shader_program_.attach( ycbcr_shader_ );
@@ -125,16 +122,10 @@ VideoDisplay::VideoDisplay( const Raster420& raster, const bool fullscreen )
                          (const void*)( 2 * sizeof( float ) ) );
   glEnableVertexAttribArray( texture_shader_program_.attribute_location( "chroma_texcoord" ) );
 
-  Y_.bind( GL_TEXTURE0 );
-  Cb_.bind( GL_TEXTURE1 );
-  Cr_.bind( GL_TEXTURE2 );
-
   const auto window_size = window().framebuffer_size();
   resize( window_size.first, window_size.second );
 
   glCheck( "VideoDisplay constructor" );
-
-  draw( raster );
 }
 
 void VideoDisplay::resize( const unsigned int width, const unsigned int height )
@@ -162,30 +153,27 @@ void VideoDisplay::resize( const unsigned int width, const unsigned int height )
   ArrayBuffer::bind( screen_corners_ );
   ArrayBuffer::load( corners, GL_STATIC_DRAW );
 
-  glCheck( "after resizing " );
+  glCheck( "after resizing" );
 
   const auto new_window_size = window().window_size();
   if ( new_window_size.first != width or new_window_size.second != height ) {
     throw runtime_error( "failed to resize window to " + to_string( width ) + "x" + to_string( height ) );
   }
+
+  ArrayBuffer::bind( screen_corners_ );
+  texture_shader_array_object_.bind();
+  texture_shader_program_.use();
+
+  glCheck( "after installing shaders" );
 }
 
-void VideoDisplay::draw( const Raster420& raster )
+void VideoDisplay::draw( Texture420& image )
 {
-  /*
-  if ( width_ != raster.Y.width() or height_ != raster.Y.height() ) {
-    throw runtime_error( "inconsistent raster dimensions" );
-  }
-  */
-
-  Y_.load( raster.Y );
-  Cb_.load( raster.Cb );
-  Cr_.load( raster.Cr );
-
+  image.bind();
   repaint();
 }
 
-void VideoDisplay::repaint( void )
+void VideoDisplay::repaint()
 {
   const auto window_size = window().window_size();
 
@@ -195,9 +183,6 @@ void VideoDisplay::repaint( void )
     resize( width_, height_ );
   }
 
-  ArrayBuffer::bind( screen_corners_ );
-  texture_shader_array_object_.bind();
-  texture_shader_program_.use();
   glDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
 
   current_context_window_.window_.swap_buffers();
