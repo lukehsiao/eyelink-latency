@@ -10,43 +10,76 @@ using namespace std::chrono;
 
 void program_body()
 {
+  const unsigned int BOX_DIM = 50;
+  bool triggered = false;
+
   VideoDisplay display { 1920, 1080, true }; // fullscreen window @ 1920x1080 luma resolution
   display.window().hide_cursor( true );
   display.window().set_swap_interval( 1 ); // wait for vertical retrace before swapping buffer
 
-  /* all white (235 = max luma in typical Y'CbCr colorspace) */
-  Raster420 white { 1920, 1080 };
-  memset( white.Y.mutable_pixels(), 235, white.Y.width() * white.Y.height() );
-  Texture420 white_texture { white };
+  /* There are 4 textures that are switched between. Until the Eyelink detects a change in eye position, we only have
+   * the frame clock in the top left corner. After, we also include a white square at the bottom right.
+   */
 
-  /* left half white */
-  Raster420 left_white { 1920, 1080 };
+  /* top left box white (235 = max luma in typical Y'CbCr colorspace) */
+  Raster420 clock_white { 1920, 1080 };
 
-  for ( unsigned int y = 0; y < left_white.Y.height(); y++ ) {
-    for ( unsigned int x = 0; x < left_white.Y.width(); x++ ) {
-      const uint8_t color = ( x < left_white.Y.width() / 2 ) ? 235 : 16;
-      left_white.Y.at( x, y ) = color;
+  for ( unsigned int y = 0; y < clock_white.Y.height(); y++ ) {
+    for ( unsigned int x = 0; x < clock_white.Y.width(); x++ ) {
+      const uint8_t color = ( x < BOX_DIM && y < BOX_DIM ) ? 235 : 16;
+      clock_white.Y.at( x, y ) = color;
     }
   }
 
-  Texture420 left_white_texture { left_white };
+  Texture420 clock_white_texture { clock_white };
 
   /* all black (16 = min luma in typical Y'CbCr colorspace) */
-  Raster420 black { 1920, 1080 };
-  memset( black.Y.mutable_pixels(), 16, black.Y.width() * black.Y.height() );
-  Texture420 black_texture { black };
+  Raster420 clock_black { 1920, 1080 };
+  memset( clock_black.Y.mutable_pixels(), 16, clock_black.Y.width() * clock_black.Y.height() );
+  Texture420 clock_black_texture { clock_black };
 
-  /* alternate black and white */
+  /* top left box white (235 = max luma in typical Y'CbCr colorspace) */
+  Raster420 triggered_clock_white { 1920, 1080 };
+
+  for ( unsigned int y = 0; y < triggered_clock_white.Y.height(); y++ ) {
+    for ( unsigned int x = 0; x < triggered_clock_white.Y.width(); x++ ) {
+      const uint8_t color = ( (x < BOX_DIM && y < BOX_DIM) || 
+                              (x < BOX_DIM && y > (triggered_clock_white.Y.height() - BOX_DIM) ) ) ? 235 : 16;
+      triggered_clock_white.Y.at( x, y ) = color;
+    }
+  }
+
+  Texture420 triggered_clock_white_texture { triggered_clock_white };
+
+  /* all black (16 = min luma in typical Y'CbCr colorspace) */
+  Raster420 triggered_clock_black { 1920, 1080 };
+
+  for ( unsigned int y = 0; y < triggered_clock_white.Y.height(); y++ ) {
+    for ( unsigned int x = 0; x < triggered_clock_white.Y.width(); x++ ) {
+      const uint8_t color = ( x < BOX_DIM && y > (triggered_clock_white.Y.height() - BOX_DIM) ) ? 235 : 16;
+      triggered_clock_white.Y.at( x, y ) = color;
+    }
+  }
+
+  Texture420 triggered_clock_black_texture { triggered_clock_black };
+
   unsigned int frame_count = 0;
 
   const auto start_time = steady_clock::now();
 
   while ( true ) {
-    display.draw( left_white_texture );
+    /* alternate clock_black and clock_white or, if triggered, triggered_clock_black and triggered_clock_white */
+    if ( triggered ) {
+      display.draw( clock_white_texture );
+    } else {
+      display.draw( triggered_clock_white_texture );
+    }
     frame_count++;
-    display.draw( white_texture );
-    frame_count++;
-    display.draw( black_texture );
+    if ( triggered ) {
+      display.draw( clock_black_texture );
+    } else {
+      display.draw( triggered_clock_black_texture );
+    }
     frame_count++;
 
     if ( frame_count % 480 == 0 ) {
