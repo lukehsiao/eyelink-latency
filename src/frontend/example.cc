@@ -161,6 +161,8 @@ int gc_window_trial( VideoDisplay& display,
                      Texture420& triggered_white,
                      Texture420& triggered_black )
 {
+  static bool toggle = false;
+
   // Used to track gaze samples
   ALLF_DATA evt;
   float x, y;
@@ -216,38 +218,14 @@ int gc_window_trial( VideoDisplay& display,
     end_trial();
     return TRIAL_ERROR;
   }
-  if ( tcdrain( arduino ) != 0 ) {
-    cerr << "Error from tcdrain\n";
-    end_trial();
-    return TRIAL_ERROR;
-  }
+  tcdrain( arduino );
 
   unsigned int frame_count = 0;
 
   const auto start_time = steady_clock::now();
 
-  // Send arduino command to switch LEDs
-
   // Poll for new samples until the diff between samples is large enough to signify LEDs switched
   while ( true ) {
-    // First, check if recording aborted
-    if ( ( error = check_recording() ) != 0 ) {
-      end_trial();
-      return error;
-    }
-
-    // check for program termination or ALT-F4 or CTRL-C keys
-    if ( break_pressed() ) {
-      end_trial();
-      return ABORT_EXPT;
-    }
-
-    // check for local ESC key to abort trial (useful in debugging)
-    if ( escape_pressed() ) {
-      end_trial();
-      return SKIP_TRIAL;
-    }
-
     // check for new sample update
     if ( eyelink_newest_float_sample( NULL ) > 0 ) {
       eyelink_newest_float_sample( &evt );
@@ -257,7 +235,6 @@ int gc_window_trial( VideoDisplay& display,
 
       // make sure pupil is present
       if ( x != MISSING_DATA && y != MISSING_DATA && evt.fs.pa[eye_used] > 0 ) {
-        // Show the white square.
         // Only trigger change when there is a large enough diff
         if ( abs( x - x_new ) >= DIFF_THRESH && abs( y - y_new ) >= DIFF_THRESH ) {
 
@@ -266,17 +243,12 @@ int gc_window_trial( VideoDisplay& display,
           cout << "Sensor delay " << sensing_delay << " us\n";
 
           // Draw a couple of the triggered frames and end
-          display.draw( triggered_white );
           const auto t2 = steady_clock::now();
-          const auto drawing_delay = duration_cast<microseconds>( t2 - t1 ).count();
-          cout << "Drawing delay " << drawing_delay << " us\n";
-          frame_count++;
-          display.draw( triggered_black );
-          frame_count++;
           display.draw( triggered_white );
-          frame_count++;
+          const auto t3 = steady_clock::now();
+          const auto drawing_delay = duration_cast<microseconds>( t3 - t2 ).count();
+          cout << "Drawing delay " << drawing_delay << " us\n";
           display.draw( triggered_black );
-          frame_count++;
 
           // Blocking read call while we wait for the arduino's
           // end-to-end measurement.
@@ -284,13 +256,7 @@ int gc_window_trial( VideoDisplay& display,
           int rdlen = read( arduino, buf, sizeof( buf ) - 1 );
           if ( rdlen > 0 ) {
             buf[rdlen] = 0;
-            cout << "Read " << rdlen << ": ";
-            for ( unsigned char* p = buf; rdlen-- > 0; p++ ) {
-              printf( " 0x%02x", *p );
-              if ( *p < ' ' )
-                *p = '\0'; // replace any control chars
-            }
-            cout << buf << endl;
+            cout << "Read: " << buf << endl;
           } else if ( rdlen < 0 ) {
             cerr << "[Error] Unable to read from Arduino.";
             end_trial();
@@ -310,9 +276,12 @@ int gc_window_trial( VideoDisplay& display,
 
     // alternate clock_black and clock_white or, if triggered,
     // triggered_black and triggered_white
-    display.draw( clock_white );
-    frame_count++;
-    display.draw( clock_black );
+    if ( toggle ) {
+      display.draw( clock_white );
+    } else {
+      display.draw( clock_black );
+    }
+    toggle = !toggle;
     frame_count++;
 
     if ( frame_count % 480 == 0 ) {
@@ -352,8 +321,8 @@ int run_trials( VideoDisplay& display,
     return ABORT_EXPT;
   }
 
-  // This is needed so that the arduino has time to boot
-  sleep( 1 );
+  // FIXME: Give a long sleep just to have time to set the trigger on oscope
+  sleep( 10 );
 
   ofstream log;
 
