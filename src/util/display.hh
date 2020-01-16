@@ -26,8 +26,7 @@
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
-#ifndef DISPLAY_HH
-#define DISPLAY_HH
+#pragma once
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -77,5 +76,3 @@ public:
   Window& window() { return current_context_window_.window_; }
   const Window& window() const { return current_context_window_.window_; }
 };
-
-#endif /* DISPLAY_HH */
