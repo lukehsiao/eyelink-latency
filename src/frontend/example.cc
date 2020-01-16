@@ -106,7 +106,6 @@ int gc_window_trial( VideoDisplay& display,
   ALLF_DATA evt;
   float x, y;
   float x_new, y_new;
-  bool triggered = false;
 
   // blank the screen
   display.draw( clock_black );
@@ -188,28 +187,32 @@ int gc_window_trial( VideoDisplay& display,
       if ( x != MISSING_DATA && y != MISSING_DATA && evt.fs.pa[eye_used] > 0 ) {
         // Show the white square.
         // Only trigger change when there is a large enough diff
-        if ( abs( x - x_new ) >= DIFF_THRESH && abs( y - y_new ) >= DIFF_THRESH && !triggered ) {
-          triggered = true;
+        if ( abs( x - x_new ) >= DIFF_THRESH && abs( y - y_new ) >= DIFF_THRESH ) {
+          
+          // Draw a couple of the triggered frames and end
+          display.draw( triggered_white );
+          frame_count++;
+          display.draw( triggered_black );
+          frame_count++;
+          display.draw( triggered_white );
+          frame_count++;
+          display.draw( triggered_black );
+          frame_count++;
 
           // Log results to file
           log << "Trial triggered.\n";
+
+          end_trial();
+          return check_record_exit();
         }
       }
     }
 
     // alternate clock_black and clock_white or, if triggered,
     // triggered_black and triggered_white
-    if ( !triggered ) {
-      display.draw( clock_white );
-    } else {
-      display.draw( triggered_white );
-    }
+    display.draw( clock_white );
     frame_count++;
-    if ( !triggered ) {
-      display.draw( clock_black );
-    } else {
-      display.draw( triggered_black );
-    }
+    display.draw( clock_black );
     frame_count++;
 
     if ( frame_count % 480 == 0 ) {
