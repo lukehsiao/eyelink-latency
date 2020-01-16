@@ -14,7 +14,7 @@ void program_body()
   display.window().hide_cursor( true );
   display.window().set_swap_interval( 1 ); // wait for vertical retrace before swapping buffer
 
-  /* all white (235 = max luma in typical Y'CbCr colorspace */
+  /* all white (235 = max luma in typical Y'CbCr colorspace) */
   Raster420 white { 1920, 1080 };
   memset( white.Y.mutable_pixels(), 235, white.Y.width() * white.Y.height() );
   Texture420 white_texture { white };
@@ -31,7 +31,7 @@ void program_body()
 
   Texture420 left_white_texture { left_white };
 
-  /* all black (16 = min luma in typical Y'CbCr colorspace */
+  /* all black (16 = min luma in typical Y'CbCr colorspace) */
   Raster420 black { 1920, 1080 };
   memset( black.Y.mutable_pixels(), 16, black.Y.width() * black.Y.height() );
   Texture420 black_texture { black };
