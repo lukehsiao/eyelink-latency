@@ -4,19 +4,77 @@
 #include <fstream>
 #include <iostream>
 
+#include <fcntl.h>
+#include <stdio.h>
+#include <termios.h>
+#include <unistd.h>
+
 #include <core_expt.h>
 #include <eyelink.h>
 
 #include "display.hh"
 
-#define BOX_DIM 100 /* Dimensions of the white square */
-#define DIFF_THRESH 25  /* Abs diff for x or y to change before trigger */
-#define SERIALTERMINAL "/dev/ttyACM0"
+#define BOX_DIM 100    /* Dimensions of the white square */
+#define DIFF_THRESH 25 /* Abs diff for x or y to change before trigger */
+#define SERIAL "/dev/ttyACM0"
 #define BAUD B115200
 #define NUM_TRIALS 1
 
 using namespace std;
 using namespace std::chrono;
+
+/**
+ * Setup the serial port interface attributes to 8-bit, no parity, 1 stop bit.
+ *
+ * @param fd    File descriptor of the serial port.
+ * @param speed The baud rate to use.
+ */
+int set_interface_attribs( int fd, int speed )
+{
+  struct termios tty;
+
+  if ( !isatty( fd ) ) {
+    printf( "fd is not a TTY\n" );
+    return -1;
+  }
+
+  if ( tcgetattr( fd, &tty ) < 0 ) {
+    printf( "Error from tcgetattr: %s\n", strerror( errno ) );
+    return -1;
+  }
+
+  tty.c_cflag |= CLOCAL | CREAD;
+  tty.c_cflag &= ~CSIZE;
+  tty.c_cflag |= CS8;      // 8-bit characters
+  tty.c_cflag &= ~PARENB;  // no parity bit
+  tty.c_cflag &= ~CSTOPB;  // only need 1 stop bit
+  tty.c_cflag &= ~CRTSCTS; // no hardware flowcontrol
+
+  tty.c_lflag |= ICANON | ISIG; // canonical input
+  tty.c_lflag &= ~( ECHO | ECHOE | ECHONL | IEXTEN );
+
+  tty.c_iflag &= ~IGNCR; // preserve carriage return
+  tty.c_iflag &= ~INPCK;
+  tty.c_iflag &= ~( INLCR | ICRNL | IUCLC | IMAXBEL );
+  tty.c_iflag &= ~( IXON | IXOFF | IXANY ); // no SW flowcontrol
+
+  tty.c_oflag &= ~OPOST;
+
+  tty.c_cc[VEOL] = 0;
+  tty.c_cc[VEOL2] = 0;
+  tty.c_cc[VEOF] = 0x04;
+
+  if ( cfsetospeed( &tty, speed ) < 0 || cfsetispeed( &tty, speed ) < 0 ) {
+    printf( "unable to set correct baud rates.\n" );
+    return -1;
+  }
+
+  if ( tcsetattr( fd, TCSANOW, &tty ) != 0 ) {
+    printf( "Error from tcsetattr: %s\n", strerror( errno ) );
+    return -1;
+  }
+  return 0;
+}
 
 /**
  * End recording: adds 100 msec of data to catch final events
@@ -97,6 +155,7 @@ int initialize_eyelink()
 
 int gc_window_trial( VideoDisplay& display,
                      ofstream& log,
+                     int arduino,
                      Texture420& clock_white,
                      Texture420& clock_black,
                      Texture420& triggered_white,
@@ -136,7 +195,7 @@ int gc_window_trial( VideoDisplay& display,
   eyelink_flush_keybuttons( 0 );
 
   // First, initialize with a single valid sample.
-  while (true) {
+  while ( true ) {
     if ( eyelink_newest_float_sample( NULL ) > 0 ) {
       eyelink_newest_float_sample( &evt );
 
@@ -148,6 +207,19 @@ int gc_window_trial( VideoDisplay& display,
         break;
       }
     }
+  }
+
+  // Send Arduino the command to switch LEDs
+  int wlen = write( arduino, "g\n", 2 );
+  if ( wlen != 2 ) {
+    cerr << "[Error] Unable to send to arduino.\n";
+    end_trial();
+    return TRIAL_ERROR;
+  }
+  if ( tcdrain( arduino ) != 0 ) {
+    cerr << "Error from tcdrain\n";
+    end_trial();
+    return TRIAL_ERROR;
   }
 
   unsigned int frame_count = 0;
@@ -188,9 +260,16 @@ int gc_window_trial( VideoDisplay& display,
         // Show the white square.
         // Only trigger change when there is a large enough diff
         if ( abs( x - x_new ) >= DIFF_THRESH && abs( y - y_new ) >= DIFF_THRESH ) {
-          
+
+          const auto t1 = steady_clock::now();
+          const auto sensing_delay = duration_cast<microseconds>( t1 - start_time ).count();
+          cout << "Sensor delay " << sensing_delay << " us\n";
+
           // Draw a couple of the triggered frames and end
           display.draw( triggered_white );
+          const auto t2 = steady_clock::now();
+          const auto drawing_delay = duration_cast<microseconds>( t2 - t1 ).count();
+          cout << "Drawing delay " << drawing_delay << " us\n";
           frame_count++;
           display.draw( triggered_black );
           frame_count++;
@@ -199,8 +278,29 @@ int gc_window_trial( VideoDisplay& display,
           display.draw( triggered_black );
           frame_count++;
 
+          // Blocking read call while we wait for the arduino's
+          // end-to-end measurement.
+          unsigned char buf[64]; // store serial data from Arduino
+          int rdlen = read( arduino, buf, sizeof( buf ) - 1 );
+          if ( rdlen > 0 ) {
+            buf[rdlen] = 0;
+            cout << "Read " << rdlen << ": ";
+            for ( unsigned char* p = buf; rdlen-- > 0; p++ ) {
+              printf( " 0x%02x", *p );
+              if ( *p < ' ' )
+                *p = '\0'; // replace any control chars
+            }
+            cout << buf << endl;
+          } else if ( rdlen < 0 ) {
+            cerr << "[Error] Unable to read from Arduino.";
+            end_trial();
+            return TRIAL_ERROR;
+          } else {
+            cerr << "Nothing read. EOF?\n";
+          }
+
           // Log results to file
-          log << "Trial triggered.\n";
+          log << buf << "," << sensing_delay << "," << drawing_delay << endl;
 
           end_trial();
           return check_record_exit();
@@ -235,6 +335,26 @@ int run_trials( VideoDisplay& display,
                 Texture420& triggered_white,
                 Texture420& triggered_black )
 {
+  // To communicate with arduino over serial
+  int arduino;
+
+  // Open the serial port to the Arduino
+  arduino = open( (char*)SERIAL, O_RDWR | O_NOCTTY | O_SYNC );
+  if ( arduino < 0 ) {
+    printf( "Error opening %s: %s\n", SERIAL, strerror( errno ) );
+    return ABORT_EXPT;
+  }
+
+  // baudrate 115200, 8 bits, no parity, 1 stop bit
+  if ( set_interface_attribs( arduino, BAUD ) != 0 ) {
+    printf( "Error setting serial interface attribs.\n" );
+    close( arduino );
+    return ABORT_EXPT;
+  }
+
+  // This is needed so that the arduino has time to boot
+  sleep( 1 );
+
   ofstream log;
 
   log.open( "results.csv" );
@@ -243,16 +363,18 @@ int run_trials( VideoDisplay& display,
   for ( unsigned int trial = 0; trial < NUM_TRIALS; trial++ ) {
     // abort if link is closed
     if ( eyelink_is_connected() == 0 || break_pressed() ) {
+      close( arduino );
       log.close();
       return ABORT_EXPT;
     }
 
-    int i = gc_window_trial( display, log, clock_white, clock_black, triggered_white, triggered_black );
+    int i = gc_window_trial( display, log, arduino, clock_white, clock_black, triggered_white, triggered_black );
 
     // Report errors
     switch ( i ) {
       case ABORT_EXPT: // handle experiment abort or disconnect
         cout << "EXPERIMENT ABORTED\n";
+        close( arduino );
         log.close();
         return ABORT_EXPT;
       case REPEAT_TRIAL: // trial restart requested
@@ -272,6 +394,7 @@ int run_trials( VideoDisplay& display,
   }
 
   // clean up
+  close( arduino );
   log.close();
 
   return 0;
@@ -310,9 +433,8 @@ void program_body()
   for ( unsigned int y = 0; y < triggered_white.Y.height(); y++ ) {
     for ( unsigned int x = 0; x < triggered_white.Y.width(); x++ ) {
       const uint8_t color =
-        ( ( x < BOX_DIM && y < BOX_DIM ) || ( x < BOX_DIM && y > ( triggered_white.Y.height() - BOX_DIM ) ) )
-          ? 235
-          : 16;
+        ( ( x < BOX_DIM && y < BOX_DIM ) || ( x < BOX_DIM && y > ( triggered_white.Y.height() - BOX_DIM ) ) ) ? 235
+                                                                                                              : 16;
       triggered_white.Y.at( x, y ) = color;
     }
   }
@@ -336,8 +458,7 @@ void program_body()
     exit( EXIT_FAILURE );
   }
 
-  run_trials(
-    display, clock_white_texture, clock_black_texture, triggered_white_texture, triggered_black_texture );
+  run_trials( display, clock_white_texture, clock_black_texture, triggered_white_texture, triggered_black_texture );
 }
 
 int main()
