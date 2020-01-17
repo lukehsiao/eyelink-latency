@@ -18,7 +18,7 @@
 #define DIFF_THRESH 25 /* Abs diff for x or y to change before trigger */
 #define SERIAL "/dev/ttyACM0"
 #define BAUD B115200
-#define NUM_TRIALS 3
+#define NUM_TRIALS 1
 
 using namespace std;
 using namespace std::chrono;
@@ -161,7 +161,7 @@ int gc_window_trial( VideoDisplay& display,
                      Texture420& triggered_white,
                      Texture420& triggered_black )
 {
-  static bool toggle = false;
+  static bool toggle = true;
 
   // Used to track gaze samples
   ALLF_DATA evt;
@@ -211,6 +211,12 @@ int gc_window_trial( VideoDisplay& display,
     }
   }
 
+  // Toggle a couple times just to have clock before the arduino switch
+  display.draw( clock_white );
+  display.draw( clock_black );
+  display.draw( clock_white );
+  display.draw( clock_black );
+
   // Send Arduino the command to switch LEDs
   int wlen = write( arduino, "g", 1 );
   if ( wlen != 1 ) {
@@ -244,11 +250,12 @@ int gc_window_trial( VideoDisplay& display,
 
           // Draw a couple of the triggered frames and end
           const auto t2 = steady_clock::now();
-          display.draw( triggered_white );
+          display.draw( triggered_black );
           const auto t3 = steady_clock::now();
           const auto drawing_delay = duration_cast<microseconds>( t3 - t2 ).count();
-          cout << "Drawing delay " << drawing_delay << " us\n";
+          display.draw( triggered_white );
           display.draw( triggered_black );
+          cout << "Drawing delay " << drawing_delay << " us\n";
 
           // Blocking read call while we wait for the arduino's
           // end-to-end measurement.
