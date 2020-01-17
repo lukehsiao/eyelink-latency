@@ -186,4 +186,5 @@ void VideoDisplay::repaint()
   glDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
 
   current_context_window_.window_.swap_buffers();
+  glFinish();
 }
