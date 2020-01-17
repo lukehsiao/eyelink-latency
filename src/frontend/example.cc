@@ -18,7 +18,7 @@
 #define DIFF_THRESH 25 /* Abs diff for x or y to change before trigger */
 #define SERIAL "/dev/ttyACM0"
 #define BAUD B115200
-#define NUM_TRIALS 1
+#define NUM_TRIALS 3
 
 using namespace std;
 using namespace std::chrono;
@@ -321,8 +321,14 @@ int run_trials( VideoDisplay& display,
     return ABORT_EXPT;
   }
 
-  // FIXME: Give a long sleep just to have time to set the trigger on oscope
-  sleep( 10 );
+  // Draw textures once to warm up. This brings subsequent draw times to <1ms.
+  display.draw( triggered_white );
+  display.draw( triggered_black );
+  display.draw( clock_white );
+  display.draw( clock_black );
+
+  // Arduino Uno uses DTR line to trigger a reset, so wait for it to boot fully.
+  sleep( 5 );
 
   ofstream log;
 
@@ -373,7 +379,12 @@ void program_body()
 {
   VideoDisplay display { 1920, 1080, true }; // fullscreen window @ 1920x1080 luma resolution
   display.window().hide_cursor( true );
-  display.window().set_swap_interval( 1 ); // wait for vertical retrace before swapping buffer
+
+  // whether to wait for vertical retrace before swapping buffer
+  // *  0 for immediate updates
+  // *  1 for updates synchronized with the vertical retrace
+  // * -1 for adaptive vsync
+  display.window().set_swap_interval( 1 );
 
   /* There are 4 textures that are switched between. Until the Eyelink detects a change in eye position, we only have
    * the frame clock in the top left corner. After, we also include a white square at the bottom right.
