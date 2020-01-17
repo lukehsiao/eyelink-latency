@@ -175,7 +175,7 @@ void clock_loop( atomic<bool>& triggered, atomic<unsigned int>& drawing_delay )
   // *  0 for immediate updates
   // *  1 for updates synchronized with the vertical retrace
   // * -1 for adaptive vsync
-  display.window().set_swap_interval( 1 );
+  display.window().set_swap_interval( 0 );
 
   /* top left box white (235 = max luma in typical Y'CbCr colorspace) */
   Raster420 clock_white { 1920, 1080 };
@@ -231,6 +231,7 @@ void clock_loop( atomic<bool>& triggered, atomic<unsigned int>& drawing_delay )
   unsigned int frame_count = 0;
 
   const auto start_time = steady_clock::now();
+  auto ts_prev = steady_clock::now();
 
   while ( true ) {
     if ( triggered ) {
@@ -245,15 +246,20 @@ void clock_loop( atomic<bool>& triggered, atomic<unsigned int>& drawing_delay )
       return;
     }
 
-    display.draw( toggle ? clock_white_texture : clock_black_texture );
-    toggle = !toggle;
-    frame_count++;
+    const auto ts = steady_clock::now();
+    const auto tdiff = duration_cast<milliseconds>( ts - ts_prev ).count();
+    if ( tdiff >= 4 ) {
+      display.draw( toggle ? clock_white_texture : clock_black_texture );
+      toggle = !toggle;
+      frame_count++;
+      ts_prev = ts;
 
-    if ( frame_count % 480 == 0 ) {
-      const auto now = steady_clock::now();
-      const auto ms_elapsed = duration_cast<milliseconds>( now - start_time ).count();
-      cout << "Drew " << frame_count << " frames in " << ms_elapsed
-           << " milliseconds = " << 1000.0 * double( frame_count ) / ms_elapsed << " frames per second.\n";
+      if ( frame_count % 480 == 0 ) {
+        const auto now = steady_clock::now();
+        const auto ms_elapsed = duration_cast<milliseconds>( now - start_time ).count();
+        cout << "Drew " << frame_count << " frames in " << ms_elapsed
+             << " milliseconds = " << 1000.0 * double( frame_count ) / ms_elapsed << " frames per second.\n";
+      }
     }
   }
 }
