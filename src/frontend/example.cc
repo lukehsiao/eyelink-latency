@@ -264,7 +264,7 @@ int gc_window_trial( ofstream& log, int arduino )
   atomic<bool> triggered( false );
   atomic<unsigned int> drawing_delay( 0 );
   unsigned int sensing_delay = 0;
-  unsigned char buf[64]; // store serial data from Arduino
+  char buf[64]; // store serial data from Arduino
   thread display_thread = thread( clock_loop, ref( triggered ), ref( drawing_delay ) );
 
   // Used to track gaze samples
@@ -365,7 +365,7 @@ int gc_window_trial( ofstream& log, int arduino )
   display_thread.join();
 
   // Log results to file
-  log << buf << "," << sensing_delay << "," << drawing_delay << endl;
+  log << atoi( as_const( buf ) ) << "," << sensing_delay << "," << drawing_delay << endl;
 
   end_trial();
   return check_record_exit();
