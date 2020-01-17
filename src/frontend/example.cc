@@ -212,8 +212,8 @@ int gc_window_trial( VideoDisplay& display,
   }
 
   // Send Arduino the command to switch LEDs
-  int wlen = write( arduino, "g\n", 2 );
-  if ( wlen != 2 ) {
+  int wlen = write( arduino, "g", 1 );
+  if ( wlen != 1 ) {
     cerr << "[Error] Unable to send to arduino.\n";
     end_trial();
     return TRIAL_ERROR;
