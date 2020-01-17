@@ -1,8 +1,10 @@
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -153,237 +155,19 @@ int initialize_eyelink()
   return 0;
 }
 
-int gc_window_trial( VideoDisplay& display,
-                     ofstream& log,
-                     int arduino,
-                     Texture420& clock_white,
-                     Texture420& clock_black,
-                     Texture420& triggered_white,
-                     Texture420& triggered_black )
+/**
+ * Separate thread for running updating the display. Toggles between 2 of 4
+ * textures: clock_white and clock_black before triggered, and trigger_white
+ * and trigger_black after triggering, where the post-trigger versions contain
+ * a white square at the bottom left in addition to alternating black and white
+ * in the top left.
+ *
+ * @param triggered A shared atomic to indicate whether to switch textures.
+ */
+void clock_loop( atomic<bool>& triggered, atomic<unsigned int>& drawing_delay )
 {
-  static bool toggle = true;
 
-  // Used to track gaze samples
-  ALLF_DATA evt;
-  float x, y;
-  float x_new, y_new;
-
-  // blank the screen
-  display.draw( clock_black );
-
-  // Ensure Eyelink has enough time to switch modes
-  set_offline_mode();
-  pump_delay( 50 );
-
-  // Start data streaming
-  // Note that we are ignoring the EDF file.
-  int error = start_recording( 0, 0, 1, 1 );
-  if ( error != 0 ) {
-    return error;
-  }
-
-  // wait for link sample data
-  if ( !eyelink_wait_for_block_start( 100, 1, 0 ) ) {
-    display.draw( clock_black );
-    end_trial();
-    cerr << "ERROR: No link samples received!\n";
-    return TRIAL_ERROR;
-  }
-
-  // determine which eye(s) are available
-  int eye_used = eyelink_eye_available();
-
-  // reset keys and buttons from tracker
-  eyelink_flush_keybuttons( 0 );
-
-  // First, initialize with a single valid sample.
-  while ( true ) {
-    if ( eyelink_newest_float_sample( NULL ) > 0 ) {
-      eyelink_newest_float_sample( &evt );
-
-      x = evt.fs.gx[eye_used];
-      y = evt.fs.gy[eye_used];
-
-      // make sure pupil is present
-      if ( x != MISSING_DATA && y != MISSING_DATA && evt.fs.pa[eye_used] > 0 ) {
-        break;
-      }
-    }
-  }
-
-  // Toggle a couple times just to have clock before the arduino switch
-  display.draw( clock_white );
-  display.draw( clock_black );
-  display.draw( clock_white );
-  display.draw( clock_black );
-
-  // Send Arduino the command to switch LEDs
-  int wlen = write( arduino, "g", 1 );
-  if ( wlen != 1 ) {
-    cerr << "[Error] Unable to send to arduino.\n";
-    end_trial();
-    return TRIAL_ERROR;
-  }
-  tcdrain( arduino );
-
-  unsigned int frame_count = 0;
-
-  const auto start_time = steady_clock::now();
-
-  // Poll for new samples until the diff between samples is large enough to signify LEDs switched
-  while ( true ) {
-    // check for new sample update
-    if ( eyelink_newest_float_sample( NULL ) > 0 ) {
-      eyelink_newest_float_sample( &evt );
-
-      x_new = evt.fs.gx[eye_used];
-      y_new = evt.fs.gy[eye_used];
-
-      // make sure pupil is present
-      if ( x != MISSING_DATA && y != MISSING_DATA && evt.fs.pa[eye_used] > 0 ) {
-        // Only trigger change when there is a large enough diff
-        if ( abs( x - x_new ) >= DIFF_THRESH && abs( y - y_new ) >= DIFF_THRESH ) {
-
-          const auto t1 = steady_clock::now();
-          const auto sensing_delay = duration_cast<microseconds>( t1 - start_time ).count();
-          cout << "Sensor delay " << sensing_delay << " us\n";
-
-          // Draw a couple of the triggered frames and end
-          const auto t2 = steady_clock::now();
-          display.draw( triggered_black );
-          const auto t3 = steady_clock::now();
-          const auto drawing_delay = duration_cast<microseconds>( t3 - t2 ).count();
-          display.draw( triggered_white );
-          display.draw( triggered_black );
-          cout << "Drawing delay " << drawing_delay << " us\n";
-
-          // Blocking read call while we wait for the arduino's
-          // end-to-end measurement.
-          unsigned char buf[64]; // store serial data from Arduino
-          int rdlen = read( arduino, buf, sizeof( buf ) - 1 );
-          if ( rdlen > 0 ) {
-            buf[rdlen] = 0;
-            cout << "Read: " << buf << endl;
-          } else if ( rdlen < 0 ) {
-            cerr << "[Error] Unable to read from Arduino.";
-            end_trial();
-            return TRIAL_ERROR;
-          } else {
-            cerr << "Nothing read. EOF?\n";
-          }
-
-          // Log results to file
-          log << buf << "," << sensing_delay << "," << drawing_delay << endl;
-
-          end_trial();
-          return check_record_exit();
-        }
-      }
-    }
-
-    // alternate clock_black and clock_white or, if triggered,
-    // triggered_black and triggered_white
-    if ( toggle ) {
-      display.draw( clock_white );
-    } else {
-      display.draw( clock_black );
-    }
-    toggle = !toggle;
-    frame_count++;
-
-    if ( frame_count % 480 == 0 ) {
-      const auto now = steady_clock::now();
-
-      const auto ms_elapsed = duration_cast<milliseconds>( now - start_time ).count();
-
-      cout << "Drew " << frame_count << " frames in " << ms_elapsed
-           << " milliseconds = " << 1000.0 * double( frame_count ) / ms_elapsed << " frames per second.\n";
-    }
-  }
-
-  // Call this at the end of the trial, to handle special conditions
-  return check_record_exit();
-}
-
-int run_trials( VideoDisplay& display,
-                Texture420& clock_white,
-                Texture420& clock_black,
-                Texture420& triggered_white,
-                Texture420& triggered_black )
-{
-  // To communicate with arduino over serial
-  int arduino;
-
-  // Open the serial port to the Arduino
-  arduino = open( (char*)SERIAL, O_RDWR | O_NOCTTY | O_SYNC );
-  if ( arduino < 0 ) {
-    printf( "Error opening %s: %s\n", SERIAL, strerror( errno ) );
-    return ABORT_EXPT;
-  }
-
-  // baudrate 115200, 8 bits, no parity, 1 stop bit
-  if ( set_interface_attribs( arduino, BAUD ) != 0 ) {
-    printf( "Error setting serial interface attribs.\n" );
-    close( arduino );
-    return ABORT_EXPT;
-  }
-
-  // Draw textures once to warm up. This brings subsequent draw times to <1ms.
-  display.draw( triggered_white );
-  display.draw( triggered_black );
-  display.draw( clock_white );
-  display.draw( clock_black );
-
-  // Arduino Uno uses DTR line to trigger a reset, so wait for it to boot fully.
-  sleep( 5 );
-
-  ofstream log;
-
-  log.open( "results.csv" );
-  log << "e2e (us), eyelink (us), drawing (us)\n";
-
-  for ( unsigned int trial = 0; trial < NUM_TRIALS; trial++ ) {
-    // abort if link is closed
-    if ( eyelink_is_connected() == 0 || break_pressed() ) {
-      close( arduino );
-      log.close();
-      return ABORT_EXPT;
-    }
-
-    int i = gc_window_trial( display, log, arduino, clock_white, clock_black, triggered_white, triggered_black );
-
-    // Report errors
-    switch ( i ) {
-      case ABORT_EXPT: // handle experiment abort or disconnect
-        cout << "EXPERIMENT ABORTED\n";
-        close( arduino );
-        log.close();
-        return ABORT_EXPT;
-      case REPEAT_TRIAL: // trial restart requested
-        cout << "TRIAL REPEATED\n";
-        trial--;
-        break;
-      case SKIP_TRIAL: // skip trial
-        cout << "TRIAL ABORTED\n";
-        break;
-      case TRIAL_OK: // successful trial
-        cout << "TRIAL OK\n";
-        break;
-      default: // other error code
-        cout << "TRIAL ERROR\n";
-        break;
-    }
-  }
-
-  // clean up
-  close( arduino );
-  log.close();
-
-  return 0;
-}
-
-void program_body()
-{
+  // First, set up all the textures
   VideoDisplay display { 1920, 1080, true }; // fullscreen window @ 1920x1080 luma resolution
   display.window().hide_cursor( true );
 
@@ -392,10 +176,6 @@ void program_body()
   // *  1 for updates synchronized with the vertical retrace
   // * -1 for adaptive vsync
   display.window().set_swap_interval( 1 );
-
-  /* There are 4 textures that are switched between. Until the Eyelink detects a change in eye position, we only have
-   * the frame clock in the top left corner. After, we also include a white square at the bottom right.
-   */
 
   /* top left box white (235 = max luma in typical Y'CbCr colorspace) */
   Raster420 clock_white { 1920, 1080 };
@@ -440,12 +220,231 @@ void program_body()
 
   Texture420 triggered_black_texture { triggered_black };
 
+  // Draw textures once to warm up. This brings subsequent draw times to <1ms.
+  display.draw( triggered_white_texture );
+  display.draw( triggered_black_texture );
+  display.draw( clock_white_texture );
+  display.draw( clock_black_texture );
+
+  // Spin here altterating frames until we are done
+  static bool toggle = true;
+  unsigned int frame_count = 0;
+
+  const auto start_time = steady_clock::now();
+
+  while ( true ) {
+    if ( triggered ) {
+      // Draw a couple of the triggered frames and then end
+      const auto t1 = steady_clock::now();
+      display.draw( toggle ? triggered_white_texture : triggered_black_texture );
+      const auto t2 = steady_clock::now();
+      drawing_delay = duration_cast<microseconds>( t2 - t1 ).count();
+      display.draw( toggle ? triggered_black_texture : triggered_white_texture );
+      display.draw( toggle ? triggered_white_texture : triggered_black_texture );
+      cout << "Drawing delay " << drawing_delay << " us\n";
+      return;
+    }
+
+    display.draw( toggle ? clock_white_texture : clock_black_texture );
+    toggle = !toggle;
+    frame_count++;
+
+    if ( frame_count % 480 == 0 ) {
+      const auto now = steady_clock::now();
+      const auto ms_elapsed = duration_cast<milliseconds>( now - start_time ).count();
+      cout << "Drew " << frame_count << " frames in " << ms_elapsed
+           << " milliseconds = " << 1000.0 * double( frame_count ) / ms_elapsed << " frames per second.\n";
+    }
+  }
+}
+
+int gc_window_trial( ofstream& log, int arduino )
+{
+  // Start thread for updating the display
+  atomic<bool> triggered( false );
+  atomic<unsigned int> drawing_delay( 0 );
+  unsigned int sensing_delay = 0;
+  unsigned char buf[64]; // store serial data from Arduino
+  thread display_thread = thread( clock_loop, ref( triggered ), ref( drawing_delay ) );
+
+  // Used to track gaze samples
+  ALLF_DATA evt;
+  float x, y;
+  float x_new, y_new;
+
+  // Ensure Eyelink has enough time to switch modes
+  set_offline_mode();
+  pump_delay( 50 );
+
+  // Start data streaming
+  // Note that we are ignoring the EDF file.
+  int error = start_recording( 0, 0, 1, 1 );
+  if ( error != 0 ) {
+    return error;
+  }
+
+  // wait for link sample data
+  if ( !eyelink_wait_for_block_start( 100, 1, 0 ) ) {
+    end_trial();
+    cerr << "ERROR: No link samples received!\n";
+    return TRIAL_ERROR;
+  }
+
+  // determine which eye(s) are available
+  int eye_used = eyelink_eye_available();
+
+  // reset keys and buttons from tracker
+  eyelink_flush_keybuttons( 0 );
+
+  // First, initialize with a single valid sample.
+  while ( true ) {
+    if ( eyelink_newest_float_sample( NULL ) > 0 ) {
+      eyelink_newest_float_sample( &evt );
+
+      x = evt.fs.gx[eye_used];
+      y = evt.fs.gy[eye_used];
+
+      // make sure pupil is present
+      if ( x != MISSING_DATA && y != MISSING_DATA && evt.fs.pa[eye_used] > 0 ) {
+        break;
+      }
+    }
+  }
+
+  // Send Arduino the command to switch LEDs
+  int wlen = write( arduino, "g", 1 );
+  if ( wlen != 1 ) {
+    cerr << "[Error] Unable to send to arduino.\n";
+    end_trial();
+    return TRIAL_ERROR;
+  }
+  tcdrain( arduino );
+
+  const auto start_time = steady_clock::now();
+
+  // Poll for new samples until the diff between samples is large enough to signify LEDs switched
+  while ( true ) {
+    // check for new sample update
+    if ( eyelink_newest_float_sample( NULL ) > 0 ) {
+      eyelink_newest_float_sample( &evt );
+
+      x_new = evt.fs.gx[eye_used];
+      y_new = evt.fs.gy[eye_used];
+
+      // make sure pupil is present
+      if ( x != MISSING_DATA && y != MISSING_DATA && evt.fs.pa[eye_used] > 0 ) {
+        // Only trigger change when there is a large enough diff
+        if ( abs( x - x_new ) >= DIFF_THRESH && abs( y - y_new ) >= DIFF_THRESH ) {
+          // Update shared atomic bool to signal display thread
+          triggered = true;
+
+          const auto t1 = steady_clock::now();
+          sensing_delay = duration_cast<microseconds>( t1 - start_time ).count();
+          cout << "Sensor delay " << sensing_delay << " us\n";
+
+          // Blocking read call while we wait for the arduino's
+          // end-to-end measurement.
+          int rdlen = read( arduino, buf, sizeof( buf ) - 1 );
+          if ( rdlen > 0 ) {
+            buf[rdlen] = 0;
+            cout << "Read: " << buf << endl;
+          } else if ( rdlen < 0 ) {
+            cerr << "[Error] Unable to read from Arduino.";
+            end_trial();
+            return TRIAL_ERROR;
+          } else {
+            cerr << "Nothing read. EOF?\n";
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // Wait for display thread to finish
+  display_thread.join();
+
+  // Log results to file
+  log << buf << "," << sensing_delay << "," << drawing_delay << endl;
+
+  end_trial();
+  return check_record_exit();
+}
+
+int run_trials()
+{
+  // To communicate with arduino over serial
+  int arduino;
+
+  // Open the serial port to the Arduino
+  arduino = open( (char*)SERIAL, O_RDWR | O_NOCTTY | O_SYNC );
+  if ( arduino < 0 ) {
+    printf( "Error opening %s: %s\n", SERIAL, strerror( errno ) );
+    return ABORT_EXPT;
+  }
+
+  // baudrate 115200, 8 bits, no parity, 1 stop bit
+  if ( set_interface_attribs( arduino, BAUD ) != 0 ) {
+    printf( "Error setting serial interface attribs.\n" );
+    close( arduino );
+    return ABORT_EXPT;
+  }
+
+  // Arduino Uno uses DTR line to trigger a reset, so wait for it to boot fully.
+  sleep( 5 );
+
+  ofstream log;
+
+  log.open( "results.csv" );
+  log << "e2e (us), eyelink (us)\n";
+
+  for ( unsigned int trial = 0; trial < NUM_TRIALS; trial++ ) {
+    // abort if link is closed
+    if ( eyelink_is_connected() == 0 || break_pressed() ) {
+      close( arduino );
+      log.close();
+      return ABORT_EXPT;
+    }
+
+    int i = gc_window_trial( log, arduino );
+
+    // Report errors
+    switch ( i ) {
+      case ABORT_EXPT: // handle experiment abort or disconnect
+        cout << "EXPERIMENT ABORTED\n";
+        close( arduino );
+        log.close();
+        return ABORT_EXPT;
+      case REPEAT_TRIAL: // trial restart requested
+        cout << "TRIAL REPEATED\n";
+        trial--;
+        break;
+      case SKIP_TRIAL: // skip trial
+        cout << "TRIAL ABORTED\n";
+        break;
+      case TRIAL_OK: // successful trial
+        cout << "TRIAL OK\n";
+        break;
+      default: // other error code
+        cout << "TRIAL ERROR\n";
+        break;
+    }
+  }
+
+  // clean up
+  close( arduino );
+  log.close();
+
+  return 0;
+}
+
+void program_body()
+{
   if ( initialize_eyelink() < 0 ) {
     cerr << "[Error] Unable to initialize EyeLink.\n";
     exit( EXIT_FAILURE );
   }
-
-  run_trials( display, clock_white_texture, clock_black_texture, triggered_white_texture, triggered_black_texture );
+  run_trials();
 }
 
 int main()
