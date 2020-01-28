@@ -166,6 +166,15 @@ sequence diagram below gives an overview of the process.
            └────┘                            └───┘                        └───────┘
 ```
 
+A table clamp is used to secure the ASG to the table top so that it is easy to
+tune the resistance of the potentiometers, and pupil sizes (i.e., changing
+EyeLink settings, or printing different sized black dots on paper), such that
+the EyeLink detects the artificial pupil reliably. This is shown below. We also
+found that we needed to block some of the EyeLink's IR LED array so that the
+reflection off of the white paper did not hide the IR LEDs from the ASG.
+
+![setup][setup]
+
 ### Artificial Saccade Generator
 
 To characterize the end-to-end latency, we use an artificial saccade generator,
@@ -206,13 +215,6 @@ The proto shield is then mounted to the Arduino, and the two are then mounted to
 an acrylic piece of plastic, with two holes cut to allow the IR LEDs to shine
 through from behind the artificial eye. The laser cutter SVG can be found in
 [docs/mount.svg](docs/mount.svg).
-
-A table clamp is used to secure the ASG to the table top so that it is easy to
-tune the resistance of the potentiometers, and pupil sizes (i.e., changing
-EyeLink settings, or printing different sized black dots on paper), such that
-the EyeLink detects the artificial pupil reliably. This is shown below.
-
-![setup][setup]
 
 [1]: https://www.ncbi.nlm.nih.gov/pubmed/24771998
 [arduino-guide]: https://www.arduino.cc/en/guide/linux
