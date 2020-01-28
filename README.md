@@ -5,6 +5,8 @@ an EyeLink 1000 eye tracker and the Xubuntu 18.04 graphics stack.
 
 ## Getting Started
 
+### Host Software
+
 To install compiler and library dependencies on Debian/Ubuntu:
 
 ```
@@ -28,6 +30,14 @@ $ ./src/frontend/example
 ```
 
 Main source code to read: [src/frontend/example.cc](https://github.com/keithw/gldemo/blob/master/src/frontend/example.cc)
+
+### Artificial Saccade Generator Software
+
+To setup the Arduino for use as the artificial saccade generator, use Arduino
+IDE on the Host computer to program the Arduino with the script found in
+[[script/arduino.ino]]. To install and set up the Arduino IDE, follow [this
+guide][arduino-guide], and pay special attention to setting serial port
+permissions.
 
 ## Reference
 
