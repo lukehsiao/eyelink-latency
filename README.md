@@ -4,71 +4,50 @@ A set of simple hardware and software used to characterize end-to-end latency of
 an EyeLink 1000 eye tracker and the Xubuntu 18.04 graphics stack with
 compositing disabled.
 
-## Installation
+## Getting Started
 
-### Dependencies
+### Prerequisites
 
-#### EyeLink Developers Kit for Linux
+* **EyeLink Developers Kit for Linux**
+  Steps to install:
 
-<details>
-    <summary>The EyeLink Developers Kit</summary>
+  1. Add signing key
+     ```
+     $ wget -O - "http://download.sr-support.com/software/dists/SRResearch/SRResearch_key" | sudo apt-key add -
+     ```
+  2. Add apt repository
+     ```
+     $ sudo add-apt-repository "deb http://download.sr-support.com/software SRResearch main"
+     $ sudo apt-get update
+     ```
+  3. Install latest release of EyeLink Developers Kit for Linux
+     ```
+     $ sudo apt-get install eyelink-display-software
+     ```
+     Alternatively, a tar of DEBs is available [at this link][debs].
 
-* EyeLink C API libraries
-     * The EyeLink Programmers Guide can be found in /usr/share/EyeLink/
-     * Sample C programs that use SDL as the graphics environment can be
-       found at /usr/share/EyeLink/SampleExperiments/
-* EyeLink EDF Access API for direct reading of .edf files in C
-     * EDF Access C API user manual can be found at /usr/share/edfapi
-     * Sample EDF API program can be found at
-       /usr/share/edfapi/EDF_Access_API/Example
-* EyeLink Pylink library for Python
-     * These libraries are symlink'd into the dist-packages folder for
-       native python installs found during installation
-     * Pylink libraries, examples, and documentation can be found in
-       /usr/share/EyeLink/pylink
-* edf2asc, a command line tool for converting .edf files to ascii
-* EDF Converter (i.e. Visual EDF2ASC), a GUI interface for converting .edf
-  files to ascii
+* **Network Configuration on Host PC**
+  The EyeLink PC and the Host PC communicate via a direct Ethernet connection
+  between the two computers. In order for third party programming
+  packages/languages to use this connection, you must use a static IP address for
+  the Ethernet port that is used to connect to the Host PC. This static IP should
+  be:
 
-</details>
+  ```
+  IP Address: 100.1.1.2
+  Subnet Mask: 255.255.255.0
+  ```
+* **Host Software Dependencies**
+  To install compiler and library dependencies on Debian/Ubuntu:
 
-Steps to install:
-
-1.  Add signing key
-    ```
-    $ wget -O - "http://download.sr-support.com/software/dists/SRResearch/SRResearch_key" | sudo apt-key add -
-    ```
-2.  Add apt repository
-    ```
-    $ sudo add-apt-repository "deb http://download.sr-support.com/software SRResearch main"
-    $ sudo apt-get update
-    ```
-3.  Install latest release of EyeLink Developers Kit for Linux
-    ```
-    $ sudo apt-get install eyelink-display-software
-    ```
-    Alternatively, a tar of DEBs is available [at this link][debs].
-
-#### Network Configuration
-
-The EyeLink PC and the Host PC communicate via a direct Ethernet connection
-between the two computers. In order for third party programming
-packages/languages to use this connection, you must use a static IP address for
-the Ethernet port that is used to connect to the Host PC. This static IP should
-be:
-
-```
-IP Address: 100.1.1.2
-Subnet Mask: 255.255.255.0
-```
+  ```
+  $ sudo apt install build-essential autotools-dev autoconf automake libgl-dev libglfw3-dev libglew-dev libglu-dev
+  ```
+* **Arduino IDE**
+  To install and set up the Arduino IDE, follow [this guide][arduino-guide], and
+  pay special attention to setting serial port permissions.
 
 ### Host Software
-
-To install compiler and library dependencies on Debian/Ubuntu:
-
-```
-$ sudo apt install build-essential autotools-dev autoconf automake libgl-dev libglfw3-dev libglew-dev libglu-dev
-```
 
 To compile:
 
@@ -104,9 +83,7 @@ Main source code to read: [src/frontend/example.cc](src/frontend/example.cc).
 
 To setup the Arduino for use as the artificial saccade generator, use Arduino
 IDE on the Host computer to program the Arduino with the script found in
-[scripts/arduino.ino](scripts/arduino.ino). To install and set up the Arduino
-IDE, follow [this guide][arduino-guide], and pay special attention to setting
-serial port permissions.
+[scripts/arduino.ino](scripts/arduino.ino).
 
 ## Reference
 
