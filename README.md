@@ -92,14 +92,11 @@ the setup.
 
 ### End-to-end Latency Measurement
 
-<details>
-    <summary>Bill of Materials</summary>
+**Bill of Materials**
 
 * [1x] Artificial Saccade Generator (ASG), described below.
 * [1x] Computer running Xubuntu 18.04 with compositing DISABLED.
 * [1x] Dell P2815Q Display running 1920x1080 @ 240Hz using Zisworks x28 R2 kit.
-
-</details>
 
 After the artificial saccade, we use a host computer to continuously monitor for
 gaze position changes. Once a change is detected, we use OpenGL to quickly
@@ -167,8 +164,7 @@ switching the other IR LED on.
 We implement this using an Arduino Uno with a custom circuit soldered to a
 prototyping shield.
 
-<details>
-    <summary>Bill of Materials</summary>
+**Bill of Materials**
 
 * [1x] F12N10L N-mosfet
 * [1x] 1RF9530 P-mosfet
@@ -181,8 +177,6 @@ prototyping shield.
 * [1x] Arduino Uno
 * [1x] Adafruit Proto Shield for Arduino
 * [1x] Black pupil laser printed on white paper
-
-</details>
 
 The circuit that is soldered to the Arduino Proto Shield is shown below.
 
