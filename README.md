@@ -187,8 +187,16 @@ an acrylic piece of plastic, with two holes cut to allow the IR LEDs to shine
 through from behind the artificial eye. The laser cutter SVG can be found in
 [docs/mount.svg](docs/mount.svg).
 
+## Example Results
+
+Using an oscilloscope, you can then time the change of pixels on the display.
+Using our particular setup, we saw waveforms like the one below.
+
+![oscope][oscope]
+
 [1]: https://www.ncbi.nlm.nih.gov/pubmed/24771998
 [arduino-guide]: https://www.arduino.cc/en/guide/linux
 [debs]: http://download.sr-support.com/linuxDisplaySoftwareRelease/eyelink-display-software_1.11_x64_debs.tar.gz
 [logo]: docs/circuit.png
 [setup]: docs/setup.jpg
+[oscope]: docs/latency_oscope.png
