@@ -169,8 +169,9 @@ prototyping shield.
 * [1x] F12N10L N-mosfet
 * [1x] 1RF9530 P-mosfet
 * [2x] Trim potentiometers
-* [1x] 2.2 M-ohm resistor
-* [1x] 22pF capacitor
+* [1x] 2.2 MΩ resistor
+* [1x] 1 kΩ resistor
+* [1x] 22 pF capacitor
 * [2x] Gikfun 5mm 940nm IR LEDs
 * [1x] FDS100 Photodiode
 * [1x] Mount + standoffs
